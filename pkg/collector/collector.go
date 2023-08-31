@@ -123,7 +123,17 @@ func (f *FleetCollector) reconcile(fleet *v1.Fleet) error {
 
 	expire := fleet.CreationTimestamp.Add(time.Duration(ttl))
 	if time.Now().Before(expire) {
-		level.Debug(f.logger).Log("msg", "ignoring fleet, ttl is not expired", "fleet", namespaced, "ttl", expire)
+		level.Debug(f.logger).Log(
+			"msg",
+			"ignoring fleet, ttl is not expired",
+			"fleet",
+			namespaced,
+			"createdAt",
+			fleet.CreationTimestamp,
+			"ttl",
+			label,
+			"expireAt",
+			expire)
 		return nil
 	}
 
