@@ -27,6 +27,7 @@ var (
 func main() {
 	kingpin.Parse()
 	logger := log.NewJSONLogger(os.Stdout)
+	logger = log.With(logger, "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
 
 	if *debug {
 		logger = level.NewFilter(logger, level.AllowDebug())
