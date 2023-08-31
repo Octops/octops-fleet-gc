@@ -95,3 +95,6 @@ buildx:
 
 push: docker
 	docker push $(DOCKER_IMAGE_TAG)
+
+install:
+	kubectl -n octops-system apply -f ./deploy/install.yaml

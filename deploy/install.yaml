@@ -1,0 +1,84 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: octops-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: octops-fleet-gc
+  namespace: octops-system
+  labels:
+    app: octops-fleet-gc
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: octops-fleet-gc
+  labels:
+    app: octops-fleet-gc
+rules:
+  - apiGroups: ["agones.dev"]
+    resources: ["gameservers", "fleets"]
+    verbs: ["get", "update", "delete", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: octops-fleet-gc
+  labels:
+    app: octops-fleet-gc
+subjects:
+  - kind: User
+    name: system:serviceaccount:octops-system:octops-fleet-gc
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: octops-fleet-gc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: octops-fleet-gc
+  name: octops-fleet-gc
+  namespace: octops-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: octops-fleet-gc
+  template:
+    metadata:
+      labels:
+        app: octops-fleet-gc
+    spec:
+      serviceAccountName: octops-fleet-gc
+      containers:
+        - image: octops/octops-fleet-gc:0.0.1 # Latest release
+          name: controller
+          ports:
+            - containerPort: 8095
+              name: metrics
+          args:
+            - --sync-period=15s
+            - --max-concurrent=5
+            - --debug # remove this arg if make it less verbose
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "0.05"
+              memory: "50Mi"
+            limits:
+              cpu: "2"
+              memory: "500Mi"
+#          livenessProbe:
+#            httpGet:
+#              path: /healthz
+#              port: 30235
+#          readinessProbe:
+#            httpGet:
+#              path: /healthz
+#              port: 30235
