@@ -181,7 +181,14 @@ func (f *FleetCollector) assignOwnerRef(scaler *autoscaling.FleetAutoscaler) err
 	}
 
 	ref := metav1.NewControllerRef(fleet, v1.SchemeGroupVersion.WithKind("Fleet"))
-	scaler.OwnerReferences = []metav1.OwnerReference{*ref}
+	for _, owner := range scaler.OwnerReferences {
+		if owner.UID == ref.UID {
+			level.Debug(f.logger).Log("msg", "FleetAutoscaler owner references already present", "fleet_autoscaler", k8sutils.Namespaced(scaler), "owner", k8sutils.Namespaced(fleet))
+			return nil
+		}
+	}
+
+	scaler.OwnerReferences = append(scaler.OwnerReferences, []metav1.OwnerReference{*ref}...)
 
 	result, err := f.client.AutoscalingV1().FleetAutoscalers(scaler.Namespace).Update(context.Background(), scaler, metav1.UpdateOptions{})
 	if err != nil {
