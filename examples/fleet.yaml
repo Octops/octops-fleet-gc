@@ -1,0 +1,27 @@
+# https://agones.dev/site/docs/getting-started/create-fleet/
+---
+apiVersion: "agones.dev/v1"
+kind: Fleet
+metadata:
+  name: simple-game-server
+  annotations:
+    octops.io/ttl: 2m # Examples: 10s, 15m, 2h, 1d
+spec:
+  replicas: 2
+  template:
+    spec:
+      ports:
+        - name: default
+          containerPort: 7654
+      template:
+        spec:
+          containers:
+            - name: simple-game-server
+              image: us-docker.pkg.dev/agones-images/examples/simple-game-server:0.17
+              resources:
+                requests:
+                  memory: "64Mi"
+                  cpu: "20m"
+                limits:
+                  memory: "64Mi"
+                  cpu: "20m"

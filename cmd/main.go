@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
 
 	v1 "agones.dev/agones/pkg/apis/agones/v1"
-	"context"
+	autoscaling "agones.dev/agones/pkg/apis/autoscaling/v1"
 	"github.com/alecthomas/kingpin"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -53,6 +54,7 @@ func main() {
 
 	bc := broadcaster.New(cfg, fleetGC, opts)
 	bc.WithWatcherFor(&v1.Fleet{})
+	bc.WithWatcherFor(&autoscaling.FleetAutoscaler{})
 
 	err = bc.Build()
 	exitIfErr(logger, err)

@@ -6,25 +6,31 @@ import (
 	"reflect"
 	"time"
 
-	v1 "agones.dev/agones/pkg/apis/agones/v1"
-	"agones.dev/agones/pkg/client/clientset/versioned"
-	"agones.dev/agones/pkg/client/informers/externalversions"
-	externalv1 "agones.dev/agones/pkg/client/informers/externalversions/agones/v1"
-	"github.com/Octops/agones-event-broadcaster/pkg/events"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	v1 "agones.dev/agones/pkg/apis/agones/v1"
+	autoscaling "agones.dev/agones/pkg/apis/autoscaling/v1"
+	"agones.dev/agones/pkg/client/clientset/versioned"
+	"agones.dev/agones/pkg/client/informers/externalversions"
+	agonesv1 "agones.dev/agones/pkg/client/informers/externalversions/agones/v1"
+	autoscalingv1 "agones.dev/agones/pkg/client/informers/externalversions/autoscaling/v1"
+	"github.com/Octops/agones-event-broadcaster/pkg/events"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+
+	"github.com/Octops/octops-fleet-gc/pkg/k8sutils"
 )
 
 type FleetCollector struct {
-	logger        log.Logger
-	client        *versioned.Clientset
-	fleetInformer externalv1.FleetInformer
+	logger                  log.Logger
+	client                  *versioned.Clientset
+	fleetInformer           agonesv1.FleetInformer
+	fleetAutoScalerInformer autoscalingv1.FleetAutoscalerInformer
 }
 
 func NewFleetCollector(ctx context.Context, logger log.Logger, config *rest.Config, resyncPeriod time.Duration) (*FleetCollector, error) {
@@ -35,13 +41,15 @@ func NewFleetCollector(ctx context.Context, logger log.Logger, config *rest.Conf
 
 	agonesInformerFactory := externalversions.NewSharedInformerFactory(agonesClient, resyncPeriod)
 	fleets := agonesInformerFactory.Agones().V1().Fleets()
+	fleetAutoScaler := agonesInformerFactory.Autoscaling().V1().FleetAutoscalers()
 
 	go agonesInformerFactory.Start(ctx.Done())
 
 	collector := &FleetCollector{
-		logger:        log.WithPrefix(logger, "component", "collector"),
-		client:        agonesClient,
-		fleetInformer: fleets,
+		logger:                  log.WithPrefix(logger, "component", "collector"),
+		client:                  agonesClient,
+		fleetInformer:           fleets,
+		fleetAutoScalerInformer: fleetAutoScaler,
 	}
 
 	if err := collector.HasSynced(ctx); err != nil {
@@ -65,6 +73,13 @@ func (f *FleetCollector) SendMessage(envelope *events.Envelope) error {
 	eventType := envelope.Header.Headers["event_type"]
 
 	switch eventType {
+	case "fleetautoscaler.events.added":
+		scaler := message.(*autoscaling.FleetAutoscaler)
+		return f.assignOwnerRef(scaler)
+	case "fleetautoscaler.events.updated":
+		msg := reflect.ValueOf(message)
+		scaler := msg.Field(1).Interface().(*autoscaling.FleetAutoscaler)
+		return f.assignOwnerRef(scaler)
 	case "fleet.events.added":
 		fleet := message.(*v1.Fleet)
 		return f.reconcile(fleet)
@@ -74,8 +89,16 @@ func (f *FleetCollector) SendMessage(envelope *events.Envelope) error {
 		return f.reconcile(fleet)
 	case "fleet.events.deleted":
 		fleet := message.(*v1.Fleet)
-		namespaced := fmt.Sprintf("%s/%s", fleet.Namespace, fleet.Name)
-		level.Debug(f.logger).Log("msg", "fleet deleted", "fleet", namespaced, "event", eventType, "action", "nop")
+
+		level.Debug(f.logger).Log(
+			"msg",
+			"fleet deleted",
+			"fleet",
+			k8sutils.Namespaced(fleet),
+			"event",
+			eventType,
+			"action",
+			"nop")
 	}
 
 	return nil
@@ -99,7 +122,7 @@ func (f *FleetCollector) HasSynced(ctx context.Context) error {
 }
 
 func (f *FleetCollector) reconcile(fleet *v1.Fleet) error {
-	namespaced := fmt.Sprintf("%s/%s", fleet.Namespace, fleet.Name)
+	namespaced := k8sutils.Namespaced(fleet)
 
 	_, ok := fleet.Annotations["octops.io/ttl"]
 	if !ok {
@@ -142,6 +165,37 @@ func (f *FleetCollector) reconcile(fleet *v1.Fleet) error {
 	}
 
 	level.Info(f.logger).Log("msg", "fleet deleted", "fleet", namespaced)
+
+	return nil
+}
+
+func (f *FleetCollector) assignOwnerRef(scaler *autoscaling.FleetAutoscaler) error {
+	fleet, err := f.fleetInformer.Lister().Fleets(scaler.Namespace).Get(scaler.Spec.FleetName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			level.Debug(f.logger).Log(
+				"msg",
+				"FleetAutoScaler does not have a Fleet deployed",
+				"fleet_autoscaler",
+				k8sutils.Namespaced(scaler),
+				"target_fleet",
+				fmt.Sprintf("%s/%s", scaler.Namespace, scaler.Spec.FleetName),
+			)
+			return nil
+		}
+
+		return errors.Wrapf(err, "failed to assign ownerRef to FleetAutoscaler %s/%s", scaler.Namespace, scaler.Name)
+	}
+
+	ref := metav1.NewControllerRef(fleet, v1.SchemeGroupVersion.WithKind("Fleet"))
+	scaler.OwnerReferences = []metav1.OwnerReference{*ref}
+
+	result, err := f.client.AutoscalingV1().FleetAutoscalers(scaler.Namespace).Update(context.Background(), scaler, metav1.UpdateOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to assign owner ref to FleetAutoscaler %s", k8sutils.Namespaced(scaler))
+	}
+
+	level.Debug(f.logger).Log("msg", "FleetAutoscaler owner references updated", "fleet_autoscaler", k8sutils.Namespaced(result), "owner", k8sutils.Namespaced(fleet))
 
 	return nil
 }
