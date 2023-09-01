@@ -65,7 +65,7 @@ spec:
           args:
             - --sync-period=15s
             - --max-concurrent=5
-            - --debug # remove this arg if make it less verbose
+            - --debug # remove this arg to make it less verbose
           imagePullPolicy: Always
           resources:
             requests:

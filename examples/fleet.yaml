@@ -5,7 +5,7 @@ kind: Fleet
 metadata:
   name: simple-game-server
   annotations:
-    octops.io/ttl: 2m # Examples: 10s, 15m, 2h, 1d
+    octops.io/ttl: 2m # Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h", "d", "w", "y".
 spec:
   replicas: 2
   template:
