@@ -124,27 +124,20 @@ func (f *FleetCollector) HasSynced(ctx context.Context) error {
 func (f *FleetCollector) reconcile(fleet *v1.Fleet) error {
 	namespaced := k8sutils.Namespaced(fleet)
 
-	_, ok := fleet.Annotations["octops.io/ttl"]
+	ttl, ok := fleet.Annotations["octops.io/ttl"]
 	if !ok {
 		level.Debug(f.logger).Log("msg", "ignoring fleet, ttl annotation is not present", "fleet", namespaced)
 		return nil
 	}
 
-	label, ok := fleet.Annotations["octops.io/ttl"]
-	if !ok {
-		err := errors.Errorf("fleet %s does not contain the ttl annotation", namespaced)
-		level.Error(f.logger).Log("err", err)
-		return err
-	}
-
-	ttl, err := model.ParseDuration(label)
+	parsed, err := model.ParseDuration(ttl)
 	if err != nil {
-		err := errors.Errorf("fleet %s has a invalid ttl %s", namespaced, label)
+		err := errors.Errorf("fleet %s has a invalid ttl %s", namespaced, ttl)
 		level.Error(f.logger).Log("err", err)
 		return err
 	}
 
-	expire := fleet.CreationTimestamp.Add(time.Duration(ttl))
+	expire := fleet.CreationTimestamp.Add(time.Duration(parsed))
 	if time.Now().Before(expire) {
 		level.Debug(f.logger).Log(
 			"msg",
@@ -154,7 +147,7 @@ func (f *FleetCollector) reconcile(fleet *v1.Fleet) error {
 			"createdAt",
 			fleet.CreationTimestamp,
 			"ttl",
-			label,
+			ttl,
 			"expireAt",
 			expire)
 		return nil
