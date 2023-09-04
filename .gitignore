@@ -22,4 +22,4 @@ bin/
 TODO
 .infrastructure
 # Helm artifacts
-octops-fleet-gs-*.tgz
+# octops-fleet-gs-*.tgz
