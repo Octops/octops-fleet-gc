@@ -59,6 +59,11 @@ spec:
         app: octops-fleet-gc
     spec:
       serviceAccountName: octops-fleet-gc
+      tolerations:
+        - key: "agones.dev/agones-system"
+          value: "true"
+          operator: "Equal"
+          effect: "NoExecute"  
       containers:
         - image: octops/octops-fleet-gc:0.0.1 # Latest release
           name: controller
@@ -68,7 +73,6 @@ spec:
           args:
             - --sync-period=15s
             - --max-concurrent=5
-            - --debug # remove this arg to make it less verbose
           imagePullPolicy: Always
           resources:
             requests:
@@ -77,11 +81,11 @@ spec:
             limits:
               cpu: "2"
               memory: "500Mi"
-#          livenessProbe:
-#            httpGet:
-#              path: /healthz
-#              port: 30235
-#          readinessProbe:
-#            httpGet:
-#              path: /healthz
-#              port: 30235
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
