@@ -21,3 +21,5 @@ bin/
 .envrc
 TODO
 .infrastructure
+# Helm artifacts
+octops-fleet-gs-*.tgz
