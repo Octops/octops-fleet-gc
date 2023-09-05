@@ -125,6 +125,12 @@ define f_helm_install
 	@helm upgrade --install $(HELM_CHART_NAME) --create-namespace -n octops-system --debug $(HELM_CHART_DIR);
 endef
 
+define f_helm_uninstall
+	@echo "" && echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
+	@echo "[*] Processing helm uninstall"
+	@helm uninstall $(HELM_CHART_NAME);
+endef
+
 define f_helm_lint
 	@echo "" && echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
 	@echo "[*] Processing helm lint"
@@ -164,6 +170,9 @@ helm-install: ## Verify configuration with all possible checks and INSTALL or UP
 	$(call f_helm_install_dryrun)
 	$(call f_helm_lint)
 	$(call f_helm_install)
+
+helm-uninstall: ## Uninstalling helm chart
+	$(call f_helm_uninstall)
 
 help:
 	@perl -pe 's/\\\n/ /' $(MAKEFILE_LIST) | grep -E '^[a-zA-Z_-]+:.*?## .*$$' | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'	
